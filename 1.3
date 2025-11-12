@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nimbus Bank - Responsive UI</title>
+  <style>
+    /* ---------- Global Styles ---------- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background-color: #f1f5f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      padding: 20px;
+    }
+
+    /* ---------- Banking Card Container ---------- */
+    .bank-container {
+      background-color: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 400px;
+      padding: 30px 25px;
+      text-align: center;
+    }
+
+    .bank-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #2563eb;
+      margin-bottom: 25px;
+    }
+
+    /* ---------- Balance Display ---------- */
+    .balance-box {
+      background-color: #e0f2fe;
+      border: 2px solid #38bdf8;
+      border-radius: 12px;
+      padding: 20px;
+      color: #0f172a;
+      font-size: 1.2rem;
+      font-weight: 500;
+      margin-bottom: 25px;
+    }
+
+    .balance-box span {
+      display: block;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin-top: 8px;
+    }
+
+    /* ---------- Buttons ---------- */
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background-color: #2563eb;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .btn:hover {
+      background-color: #1e40af;
+    }
+
+    /* ---------- Responsive Design ---------- */
+    @media (max-width: 480px) {
+      .bank-container {
+        padding: 20px;
+      }
+
+      .bank-title {
+        font-size: 1.4rem;
+      }
+
+      .balance-box span {
+        font-size: 1.6rem;
+      }
+
+      .btn {
+        font-size: 0.95rem;
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bank-container">
+    <h1 class="bank-title">Nimbus Bank</h1>
+
+    <div class="balance-box">
+      Current Balance
+      <span>$12,500.00</span>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn">Deposit</button>
+      <button class="btn">Withdraw</button>
+    </div>
+  </div>
+
+</body>
+</html>
