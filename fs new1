@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Interactive SVG Drawing Tool</title>
+  <style>
+    :root{--toolbar-bg:#1f2937;--panel-bg:#111827;--accent:#06b6d4;color-scheme:light}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:0;height:100vh;display:flex;flex-direction:column}
+    header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(90deg,#0f172a,#081026);color:#fff}
+    header .title{font-weight:700}
+    .app{display:flex;flex:1;min-height:0}
+    .toolbar{width:320px;background:#0b1220;color:#e6eef8;padding:12px;box-sizing:border-box;overflow:auto}
+    .canvas-wrap{flex:1;display:flex;flex-direction:column;background:linear-gradient(180deg,#0b1220,#061025);align-items:center;justify-content:center}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+    .btn{background:#111827;border:1px solid #1f2937;padding:8px 10px;border-radius:6px;color:#fff;cursor:pointer}
+    .btn.active{outline:2px solid var(--accent)}
+    label{font-size:13px;color:#cbd5e1}
+    input[type=color], input[type=range], select{background:#0b1220;color:#fff;border:1px solid #172033;padding:6px;border-radius:6px}
+    .status{margin-top:10px;font-size:13px;color:#94a3b8}
+    svg#board{background:#fff;border:1px dashed rgba(255,255,255,0.06);width:90%;height:90%;max-width:1100px;max-height:700px}
+    .small{font-size:13px}
+    footer{padding:8px 12px;color:#9aa8bd;background:#07101a;font-size:13px}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="display:flex;flex-direction:column">
+      <div class="title">Interactive SVG Drawing Tool</div>
+      <div style="font-size:12px;color:#9aa8bd">Draw rectangles, circles, lines, freehand. Select & move, undo, download SVG</div>
+    </div>
+  </header>
+
+  <div class="app">
+    <aside class="toolbar">
+      <div class="controls">
+        <button class="btn" data-tool="select" id="tool-select">Select</button>
+        <button class="btn" data-tool="rect" id="tool-rect">Rectangle</button>
+        <button class="btn" data-tool="circle" id="tool-circle">Circle</button>
+        <button class="btn" data-tool="line" id="tool-line">Line</button>
+        <button class="btn" data-tool="path" id="tool-path">Freehand</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <label class="small">Stroke color</label><br>
+        <input type="color" id="strokeColor" value="#000000">
+      </div>
+
+      <div style="margin-top:10px">
+        <label class="small">Fill color</label><br>
+        <input type="color" id="fillColor" value="#ff0000">
+      </div>
+
+      <div style="margin-top:10px">
+        <label class="small">Stroke width: <span id="swVal">2</span></label><br>
+        <input type="range" id="strokeWidth" min="0" max="20" step="1" value="2">
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="btn-undo">Undo</button>
+        <button class="btn" id="btn-clear">Clear</button>
+        <button class="btn" id="btn-download">Download SVG</button>
+      </div>
+
+      <div style="margin-top:12px">
+        <label class="small">Mode options</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <label class="small"><input type="checkbox" id="fillToggle" checked> Fill</label>
+          <label class="small"><input type="checkbox" id="showGuides"> Guides</label>
+        </div>
+      </div>
+
+      <div class="status" id="status">Tool: Select</div>
+
+      <hr style="margin:12px 0;border-color:rgba(255,255,255,0.04)">
+      <div style="font-size:13px;color:#cbd5e1">Shortcuts</div>
+      <ul style="color:#94a3b8">
+        <li>Del: delete selected</li>
+        <li>Ctrl+Z / Cmd+Z: undo</li>
+        <li>Click + drag: draw or move</li>
+      </ul>
+    </aside>
+
+    <div class="canvas-wrap">
+      <svg id="board" tabindex="0" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+  </div>
+
+  <footer>Open this HTML file in any modern browser. Elements are created with SVG DOM APIs.</footer>
+
+  <script>
+    // Basic utility & state
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const board = document.getElementById('board');
+    const tools = Array.from(document.querySelectorAll('.btn[data-tool]'));
+    const status = document.getElementById('status');
+    const strokeColor = document.getElementById('strokeColor');
+    const fillColor = document.getElementById('fillColor');
+    const strokeWidth = document.getElementById('strokeWidth');
+    const swVal = document.getElementById('swVal');
+    const fillToggle = document.getElementById('fillToggle');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnClear = document.getElementById('btn-clear');
+    const btnDownload = document.getElementById('btn-download');
+
+    let state = {
+      tool: 'select',
+      drawing: false,
+      start: null,
+      currentElem: null,
+      selected: null,
+      actionStack: [] // for undo
+    };
+
+    function setTool(name){
+      state.tool = name;
+      tools.forEach(t => t.classList.toggle('active', t.dataset.tool === name));
+      status.textContent = 'Tool: ' + (name.charAt(0).toUpperCase() + name.slice(1));
+      if(name !== 'select') deselect();
+    }
+
+    tools.forEach(t=> t.addEventListener('click', ()=> setTool(t.dataset.tool)));
+    setTool('select');
+
+    // Helpers to create SVG elements
+    function create(tag, attrs){
+      const el = document.createElementNS(SVG_NS, tag);
+      for(const k in attrs) el.setAttribute(k, attrs[k]);
+      return el;
+    }
+
+    function ptFromEvent(evt){
+      const rect = board.getBoundingClientRect();
+      return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    }
+
+    // Drawing flows
+    board.addEventListener('mousedown', (evt) => {
+      // only left button
+      if (evt.button !== 0) return;
+      board.focus();
+      const p = ptFromEvent(evt);
+      state.start = p;
+      state.drawing = true;
+
+      if(state.tool === 'rect'){
+        const r = create('rect', { x: p.x, y: p.y, width: 0, height: 0, stroke: strokeColor.value, 'stroke-width': strokeWidth.value, fill: fillToggle.checked ? fillColor.value : 'none' });
+        board.appendChild(r);
+        state.currentElem = r;
+        pushAction({ type: 'add', elem: r });
+      }
+
+      if(state.tool === 'circle'){
+        const c = create('circle', { cx: p.x, cy: p.y, r: 0, stroke: strokeColor.value, 'stroke-width': strokeWidth.value, fill: fillToggle.checked ? fillColor.value : 'none' });
+        board.appendChild(c);
+        state.currentElem = c;
+        pushAction({ type: 'add', elem: c });
+      }
+
+      if(state.tool === 'line'){
+        const l = create('line', { x1: p.x, y1: p.y, x2: p.x, y2: p.y, stroke: strokeColor.value, 'stroke-width': strokeWidth.value });
+        board.appendChild(l);
+        state.currentElem = l;
+        pushAction({ type: 'add', elem: l });
+      }
+
+      if(state.tool === 'path'){
+        const d = `M ${p.x} ${p.y}`;
+        const path = create('path', { d, stroke: strokeColor.value, 'stroke-width': strokeWidth.value, fill: 'none', 'stroke-linecap':'round','stroke-linejoin':'round' });
+        board.appendChild(path);
+        state.currentElem = path;
+        pushAction({ type: 'add', elem: path });
+      }
+
+      if(state.tool === 'select'){
+        // check if clicked on an element (ignore board itself)
+        if(evt.target !== board){
+          selectElement(evt.target, p);
+        } else {
+          deselect();
+        }
+      }
+
+      evt.preventDefault();
+    });
+
+    board.addEventListener('mousemove', (evt) => {
+      if(!state.drawing) return;
+      const p = ptFromEvent(evt);
+      const s = state.start;
+      const el = state.currentElem;
+
+      if(!el) return;
+
+      if(el.tagName === 'rect'){
+        const x = Math.min(s.x, p.x);
+        const y = Math.min(s.y, p.y);
+        const w = Math.abs(p.x - s.x);
+        const h = Math.abs(p.y - s.y);
+        el.setAttribute('x', x);
+        el.setAttribute('y', y);
+        el.setAttribute('width', w);
+        el.setAttribute('height', h);
+      }
+
+      if(el.tagName === 'circle'){
+        const dx = p.x - s.x;
+        const dy = p.y - s.y;
+        const r = Math.sqrt(dx*dx + dy*dy);
+        el.setAttribute('r', r);
+      }
+
+      if(el.tagName === 'line'){
+        el.setAttribute('x2', p.x);
+        el.setAttribute('y2', p.y);
+      }
+
+      if(el.tagName === 'path'){
+        const d = el.getAttribute('d') + ` L ${p.x} ${p.y}`;
+        el.setAttribute('d', d);
+      }
+
+      // if selected & moving
+      if(state.tool === 'select' && state.selected && state.dragging){
+        const dx = p.x - state.dragStart.x;
+        const dy = p.y - state.dragStart.y;
+        state.selected.setAttribute('transform', `translate(${state.dragOffset.x + dx} ${state.dragOffset.y + dy})`);
+      }
+    });
+
+    board.addEventListener('mouseup', (evt) => {
+      if(evt.button !== 0) return;
+      state.drawing = false;
+      state.currentElem = null;
+
+      // stop dragging selection
+      if(state.dragging){
+        // update stored offset
+        const tr = state.selected.getAttribute('transform') || 'translate(0 0)';
+        const m = tr.match(/translate\(([-0-9.]+)\s+([-0-9.]+)\)/);
+        if(m){ state.dragOffset = { x: parseFloat(m[1]), y: parseFloat(m[2]) }; }
+        state.dragging = false;
+      }
+    });
+
+    // Selection & moving
+    function selectElement(el, point){
+      if(el === board) return;
+      // if text node, find nearest svg element
+      while(el && el.parentNode !== board && el.parentNode !== document) el = el.parentNode;
+      deselect();
+      state.selected = el;
+      el.classList.add('selected');
+      // add visual cue
+      el.setAttribute('opacity', 0.85);
+      state.dragging = true;
+      state.dragStart = point;
+      // current translate offset (if any)
+      const tr = el.getAttribute('transform') || 'translate(0 0)';
+      const m = tr.match(/translate\(([-0-9.]+)\s+([-0-9.]+)\)/);
+      state.dragOffset = m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+      pushAction({ type: 'select', elem: el });
+    }
+
+    function deselect(){
+      if(state.selected){
+        state.selected.removeAttribute('opacity');
+        state.selected.classList.remove('selected');
+      }
+      state.selected = null;
+    }
+
+    // Undo stack (very simple): stores {type:'add'|'remove'|'modify', elem }
+    function pushAction(action){
+      // when adding an element, store.
+      state.actionStack.push(action);
+      if(state.actionStack.length > 100) state.actionStack.shift();
+    }
+
+    function undo(){
+      const act = state.actionStack.pop();
+      if(!act) return;
+      if(act.type === 'add'){
+        // remove the element
+        if(act.elem && act.elem.parentNode) act.elem.parentNode.removeChild(act.elem);
+      }
+      // more sophisticated undo (modify/select) could be extended
+    }
+
+    btnUndo.addEventListener('click', ()=> undo());
+    btnClear.addEventListener('click', ()=> {
+      Array.from(board.children).forEach(c => c.remove());
+      state.actionStack = [];
+      deselect();
+    });
+
+    // download current SVG
+    btnDownload.addEventListener('click', ()=>{
+      // clone to avoid picking up temporary transforms
+      const clone = board.cloneNode(true);
+      // ensure width/height attributes so file has viewbox
+      clone.setAttribute('width', board.clientWidth);
+      clone.setAttribute('height', board.clientHeight);
+      const serializer = new XMLSerializer();
+      const
